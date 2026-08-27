@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <title>Learnword</title>
+  <link rel="stylesheet" href="popup.css">
+</head> 
+<!-- Limit Reached Notification (hidden by default) -->
+<div id="tierLimitNotification" class="tier-limit-notification" style="display: none;">
+  <div class="notification-content">
+    <span class="notification-icon">⚠️</span>
+    <div class="notification-text">
+      <p class="notification-title">Daily limit reached</p>
+      <p class="notification-desc">You've used your 12 free lookups today. Come back tomorrow or upgrade to Pro.</p>
+    </div>
+    <a href="https://learnword.lemonsqueezy.com" target="_blank" class="notification-btn">Upgrade Now</a>
+  </div>
+</div>
+<body>
+    <!-- Tab Navigation -->
+  <div class="tabs">
+    <button class="tab active" data-tab="lookup" id="tab-lookup">
+      <div class="popup-logo-wrapper">
+        <img src="../icons/popup_logo_light.png" class="popup-logo popup-logo-light" alt="Learnword logo" onerror="console.error('Light logo failed to load')">
+        <img src="../icons/popup_logo_dark.png" class="popup-logo popup-logo-dark" alt="Learnword logo" onerror="console.error('Dark logo failed to load')">
+      </div>
+    </button>
+    <button class="tab" data-tab="history" id="tab-history">
+      History <span class="tab-badge" id="history-count">0</span>
+    </button>
+  </div>
+  <div id="lookup-content" class="tab-content active">
+    <div class = "header-row">
+      <img src="../icons/lw_logo.png" alt="Learnword logo" class="logo">
+      <h1>Learnword</h1>
+    </div>
+    <div class="muted" id="trigger-instructions">...</div>
+    
+    <div class="api-status" id="apiStatus">
+      <span class="label">Active API:</span>
+      <span class="value" id="currentApi">Loading...</span>
+    </div>
+
+    <label class="toggle-label">
+      <input id="toggle-active" type="checkbox" checked>
+      <span>Enable Learnword</span>
+    </label>
+
+    <div class="row">
+      <div class="settings-btn-wrapper">
+        <a href="../settings/options.html" target="_blank">
+          <button class="btn-primary">
+            <i class="fa fa-cog"></i> Settings
+          </button>
+        </a>
+      </div>
+      <!-- Premium API Key dropdown -->
+      <div class="dropdown" id="apiKeyDropdown" aria-haspopup="true" aria-expanded="false">
+        <button id="apiKeyDropdownBtn" class="btn-secondary dropdown-toggle" aria-controls="apiKeyDropdownMenu" aria-expanded="false">
+          <span>Get API Key</span>
+          <i class="fa-solid fa-caret-down caret"></i>
+        </button>
+
+        <div id="apiKeyDropdownMenu" class="dropdown-menu hidden" role="menu" aria-label="API Key Links">
+          <a class="dropdown-link" href="https://dictionaryapi.com/register/index" target="_blank" rel="noreferrer" role="menuitem">
+            <button class="dropdown-item">Merriam-Webster API Key</button>
+          </a>
+
+          <a class="dropdown-link" href="https://developer.wordnik.com/" target="_blank" rel="noreferrer" role="menuitem">
+            <button class="dropdown-item">Wordnik API Key</button>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <p class="note">
+      <strong>Tip:</strong> Free Dictionary API works without any setup.
+      Add Merriam-Webster or Wordnik keys in options for more comprehensive definitions.
+    </p>
+    <div class="pdf-viewer-btn-wrapper" id="pdfViewerBtnWrapper" style="display: none;">
+      <button id="openPdfReader" class="btn-primary full-width-btn">
+        <i class="fa fa-file-pdf"></i> Open PDF Reader
+      </button>
+    </div>
+  </div>
+  
+  <!-- History Tab Content - MOVED OUTSIDE lookup-content -->
+  <div id="history-content" class="tab-content hidden">
+    <!-- History List View -->
+    <div id="history-list-view">
+      <div class="history-header">
+        <i class="fa fa-search" aria-hidden="true"></i><input type="search" id="history-search" placeholder="Search..." />
+        <button id="clear-history-btn" class="btn-clear" title="Clear all history">×</button>
+      </div>
+
+      <div id="history-list" class="history-list">
+        <!-- History items will be dynamically inserted here -->
+      </div>
+
+      <div id="history-empty" class="history-empty hidden">
+        <p>📚 No lookup history yet</p>
+        <p class="muted">Words you look up will appear here</p>
+      </div>
+
+    </div>
+
+    <!-- Definition Detail View -->
+    <div id="definition-view" class="definition-view hidden">
+      <button id="back-to-history" class="back-btn">← Back to History</button>
+
+      <div class="definition-detail">
+        <h2 id="detail-word"></h2>
+        <div id="detail-pronunciation" class="detail-pronunciation">
+          <span id="detail-phonetic"></span>
+          <button id="detail-audio-btn" class="detail-audio-btn" title="Play pronunciation"><i class="fa-solid fa-volume-high"></i></button>
+        </div>
+        
+        <div class="detail-section">
+          <h3>Definitions</h3>
+          <div id="detail-definitions" class="detail-definitions">
+            <!-- Definitions will be inserted here -->
+          </div>
+        </div>
+
+        <!-- Note Section -->
+        <div class="note-section">
+          <button id="add-note-btn" class="note-toggle-btn">
+            <i class="fa-solid fa-pen-nib"></i> Add Note
+          </button>
+
+          <div id="note-preview" class="note-preview hidden">
+            <button class="note-toggle-btn expanded">
+              <i class="fa-solid fa-pen-nib"></i> Note ▼
+            </button>
+            <p id="note-preview-text" class="note-text"></p>
+            <div class="note-actions">
+              <button id="edit-note-btn" class="btn-small">Edit</button>
+              <button id="delete-note-btn" class="btn-small btn-danger"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>
+
+          <div id="note-editor" class="note-editor hidden">
+            <textarea
+              id="note-textarea"
+              placeholder="Type your note here..."
+              maxlength="500"
+              rows="4"
+            ></textarea>
+            <div class="note-editor-footer">
+              <span id="char-count" class="char-count">0/500</span>
+              <div class="note-editor-actions">
+                <button id="save-note-btn" class="btn-primary btn-small"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+                <button id="cancel-note-btn" class="btn-secondary btn-small">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="detail-meta">
+          <div class="detail-meta-item">
+            <strong>Source:</strong> <span id="detail-source"></span>
+          </div>
+          <div class="external-buttons">
+            <button class="external-btn google-btn" id="google-search-btn" title="Search on Google">
+              <i class="fa-brands fa-google"></i>
+            </button>
+            <button class="external-btn wikipedia-btn" id="wikipedia-btn" title="Open Wikipedia">
+              <i class="fa-brands fa-wikipedia-w"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<!-- Custom Confirmation Dialog -->
+<div id="confirmDialog" class="dialog-overlay" style="display: none;">
+  <div class="confirmation-dialog">
+    <h3 id="confirmTitle">Clear all history?</h3>
+    <p id="confirmMessage">This cannot be undone.</p>
+    
+    <label class="dialog-checkbox">
+      <input type="checkbox" id="dontAskAgain">
+      <span>Don't ask again</span>
+    </label>
+    
+    <div class="dialog-buttons">
+      <button id="cancelBtn" class="btn-cancel">Cancel</button>
+      <button id="confirmBtn" class="btn-confirm">Clear</button>
+    </div>
+  </div>
+</div>
+  <script src="popup.js"></script>
+</body>
+</html>

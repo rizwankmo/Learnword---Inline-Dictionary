@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Learnword - Options</title>
+  <link rel="icon" href="../icons/lw_logo.png" type="image/png">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <img src="../icons/lw_logo.png" alt="Learnword logo" class="logo">
+      <div class="header-text">
+        <h1>Learnword Settings</h1>
+        <p class="subtitle">Customize your dictionary experience</p>
+      </div>
+      <div class="current-tier">
+        <span class="tier-badge" id="currentTierBadge">Free</span>
+      </div>
+    </header>
+        <!-- API Settings Section -->
+    <section class="section">
+      <div class="section-row">
+        <div>
+          <h2>Dictionary API Settings</h2>
+          <p class="muted">Choose which dictionary should be used by default.</p>
+        </div>
+        <div class="section-actions">
+          <label>
+            <strong>Preferred API</strong>
+            <select id="preferredApi">
+              <option value="merged">Merged (DDG + Wiktionary) ⭐</option>
+              <option value="freeDictionary">Free Dictionary API (No key needed)</option>
+              <option value="duckDuckGo">DuckDuckGo Instant Answer</option>
+              <option value="wiktionary">Wiktionary</option>
+              <option value="merriamWebster">Merriam-Webster Dictionary</option>
+              <option value="wordnik">Wordnik API</option>
+            </select>
+          </label>
+          <label class="checkbox-label small">
+            <input id="enableFallback" type="checkbox" checked>
+            <span>Enable fallback to other APIs</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="api-info">
+        <p><strong>How it works:</strong></p>
+        <ul>
+          <li><strong>Merged (DDG + Wiktionary):</strong> Best of both - concise definition + detailed explanation</li>
+          <li><strong>DuckDuckGo:</strong> Instant answers, no setup required</li>
+          <li><strong>Wiktionary:</strong> Detailed dictionary entries, no setup required</li>
+          <li><strong>Free Dictionary API:</strong> No setup, ready-to-use</li>
+          <li><strong>Merriam-Webster:</strong> Requires API key (1000/day)</li>
+          <li><strong>Wordnik:</strong> Requires API key (detailed entries)</li>
+        </ul>
+        <p>With fallback enabled, Learnword will try other APIs if your preferred one fails.</p>
+      </div>
+    </section>
+
+    <!-- API Key Sections (hidden unless selected) -->
+    <section class="section api-key-section" id="merriamWebsterSection" aria-hidden="true" style="display:none;">
+      <h2>Merriam-Webster API Key</h2>
+      <p class="muted">Get a free key at <a href="https://dictionaryapi.com/register/index" target="_blank" rel="noreferrer">dictionaryapi.com</a></p>
+      <label>
+        API Key
+        <input id="merriamWebsterKey" type="text" placeholder="Enter your Merriam-Webster API key">
+      </label>
+      <div class="button-row">
+        <button id="saveMerriamKey" class="btn-primary">Save & Test</button>
+        <button id="testMerriam" class="btn-secondary">Test Connection</button>
+      </div>
+      <div id="merriamStatus" class="status"></div>
+    </section>
+
+    <section class="section api-key-section" id="wordnikSection" aria-hidden="true" style="display:none;">
+      <h2>Wordnik API Key</h2>
+      <p class="muted">Get a free key at <a href="https://developer.wordnik.com" target="_blank" rel="noreferrer">developer.wordnik.com</a></p>
+      <label>
+        API Key
+        <input id="wordnikApiKey" type="text" placeholder="Enter your Wordnik API key">
+      </label>
+      <div class="button-row">
+        <button id="saveWordnikKey" class="btn-primary">Save & Test</button>
+        <button id="testWordnik" class="btn-secondary">Test Connection</button>
+      </div>
+      <div id="wordnikStatus" class="status"></div>
+    </section>
+    <!-- Language Settings Section -->
+    <section class="section">
+      <div class="section-row">
+        <div>
+          <h2>🌍 Display Language</h2>
+          <p class="muted">Select the language for definitions, examples, and synonyms.</p>
+        </div>
+        <div class="section-actions">
+          <label>
+            <strong>Target Language</strong>
+            <select id="targetLanguage">
+              <option value="en">English (Original)</option>
+              <optgroup label="Popular Languages">
+                <option value="es">Spanish (Español)</option>
+                <option value="fr">French (Français)</option>
+                <option value="de">German (Deutsch)</option>
+                <option value="it">Italian (Italiano)</option>
+                <option value="pt">Portuguese (Português)</option>
+                <option value="ru">Russian (Русский)</option>
+                <option value="ja">Japanese (日本語)</option>
+                <option value="zh">Chinese Simplified (简体中文)</option>
+                <option value="ko">Korean (한국어)</option>
+                <option value="ar">Arabic (العربية)</option>
+                <option value="hi">Hindi (हिन्दी)</option>
+              </optgroup>
+              <optgroup label="All Languages (A-Z)">
+                <option value="af">Afrikaans</option>
+                <option value="sq">Albanian</option>
+                <option value="am">Amharic</option>
+                <option value="hy">Armenian</option>
+                <option value="az">Azerbaijani</option>
+                <option value="eu">Basque</option>
+                <option value="be">Belarusian</option>
+                <option value="bn">Bengali</option>
+                <option value="bs">Bosnian</option>
+                <option value="bg">Bulgarian</option>
+                <option value="ca">Catalan</option>
+                <option value="zh-TW">Chinese Traditional (繁體中文)</option>
+                <option value="hr">Croatian</option>
+                <option value="cs">Czech</option>
+                <option value="da">Danish</option>
+                <option value="nl">Dutch</option>
+                <option value="et">Estonian</option>
+                <option value="fi">Finnish</option>
+                <option value="gl">Galician</option>
+                <option value="ka">Georgian</option>
+                <option value="el">Greek</option>
+                <option value="gu">Gujarati</option>
+                <option value="ht">Haitian Creole</option>
+                <option value="he">Hebrew</option>
+                <option value="hu">Hungarian</option>
+                <option value="is">Icelandic</option>
+                <option value="id">Indonesian</option>
+                <option value="ga">Irish</option>
+                <option value="kn">Kannada</option>
+                <option value="kk">Kazakh</option>
+                <option value="km">Khmer</option>
+                <option value="ku">Kurdish</option>
+                <option value="ky">Kyrgyz</option>
+                <option value="lo">Lao</option>
+                <option value="lv">Latvian</option>
+                <option value="lt">Lithuanian</option>
+                <option value="mk">Macedonian</option>
+                <option value="ms">Malay</option>
+                <option value="ml">Malayalam</option>
+                <option value="mt">Maltese</option>
+                <option value="mr">Marathi</option>
+                <option value="mn">Mongolian</option>
+                <option value="ne">Nepali</option>
+                <option value="no">Norwegian</option>
+                <option value="fa">Persian</option>
+                <option value="pl">Polish</option>
+                <option value="pt-BR">Portuguese (Brazil)</option>
+                <option value="pa">Punjabi</option>
+                <option value="ro">Romanian</option>
+                <option value="sr">Serbian</option>
+                <option value="si">Sinhala</option>
+                <option value="sk">Slovak</option>
+                <option value="sl">Slovenian</option>
+                <option value="so">Somali</option>
+                <option value="sw">Swahili</option>
+                <option value="sv">Swedish</option>
+                <option value="tl">Tagalog</option>
+                <option value="tg">Tajik</option>
+                <option value="ta">Tamil</option>
+                <option value="te">Telugu</option>
+                <option value="th">Thai</option>
+                <option value="tr">Turkish</option>
+                <option value="uk">Ukrainian</option>
+                <option value="ur">Urdu</option>
+                <option value="uz">Uzbek</option>
+                <option value="vi">Vietnamese</option>
+                <option value="cy">Welsh</option>
+                <option value="yi">Yiddish</option>
+                <option value="zu">Zulu</option>
+              </optgroup>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="api-info">
+        <p><strong>How it works:</strong></p>
+        <ul>
+          <li><strong>English:</strong> Shows original definitions from dictionary APIs</li>
+          <li><strong>Other languages:</strong> Automatically translates definitions</li>
+          <li><strong>Default:</strong> Free MyMemory translation (50K chars/day)</li>
+          <li><strong>Optional:</strong> Use your own Google Translate API for higher quality</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Translation Provider Section -->
+    <section class="section" id="translationProviderSection" style="display:none;">
+      <h2>Translation Provider</h2>
+      <p class="muted">Choose how translations are powered</p>
+      
+      <label>
+        <strong>Provider</strong>
+        <select id="translationProvider">
+          <option value="mymemory">MyMemory (Free - No credit card needed) ⭐</option>
+          <option value="google">Google Translate (Your API key required)</option>
+        </select>
+      </label>
+
+      <div id="myMemoryInfo" class="api-info">
+        <p><strong>MyMemory Translation API (FREE):</strong></p>
+        <ul>
+          <li>✅ No credit card required</li>
+          <li>✅ 5,000 characters/day anonymous</li>
+          <li>✅ 50,000 characters/day with email (~125 lookups/day)</li>
+          <li>✅ Supports 100+ languages</li>
+          <li>⚠️ Quality: Good (not as accurate as Google)</li>
+        </ul>
+        
+        <label style="margin-top: 12px;">
+          <strong>Your Email (Optional - for higher limits)</strong>
+          <input id="userEmail" type="email" placeholder="your@email.com (optional)">
+          <span class="muted small" style="display:block;margin-top:6px;">Adding your email increases daily limit from 5K to 50K characters (free!)</span>
+        </label>
+        <div class="button-row">
+          <button id="saveEmail" class="btn-primary">Save Email</button>
+          <button id="testMyMemory" class="btn-secondary">Test Connection</button>
+        </div>
+        <div id="myMemoryStatus" class="status"></div>
+      </div>
+    </section>
+
+    <!-- Google Translate API Key Section (shown only when Google selected) -->
+    <section class="section" id="googleTranslateSection" style="display:none;">
+      <h2>Google Cloud Translation API Key</h2>
+      <p class="muted">Get a free API key at <a href="https://console.cloud.google.com/apis/library/translate.googleapis.com" target="_blank" rel="noreferrer">Google Cloud Console</a></p>
+      <p class="muted small">⚠️ Requires credit card for free tier. Free tier: 500,000 characters/month. <a href="https://cloud.google.com/translate/pricing" target="_blank" rel="noreferrer">View pricing</a></p>
+      
+      <label>
+        API Key
+        <input id="googleTranslateKey" type="text" placeholder="Enter your Google Cloud Translation API key">
+      </label>
+      <div class="button-row">
+        <button id="saveTranslateKey" class="btn-primary">Save & Test</button>
+        <button id="testTranslate" class="btn-secondary">Test Connection</button>
+      </div>
+      <div id="translateStatus" class="status"></div>
+
+      <div class="note">
+        <strong>Setup Guide:</strong>
+        <ol style="margin: 8px 0; padding-left: 20px;">
+          <li>Go to <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a></li>
+          <li>Create a new project or select existing one</li>
+          <li>Enable "Cloud Translation API"</li>
+          <li>Go to "Credentials" → "Create Credentials" → "API Key"</li>
+          <li>Copy the API key and paste it above</li>
+        </ol>
+      </div>
+    </section>
+    <!-- Popup Trigger Settings -->
+    <section class="section">
+      <h2>Popup Trigger</h2>
+      <p class="muted">How should the lookup popup be triggered when you select text?</p>
+
+      <label>
+        <strong>Trigger Mode</strong>
+        <select id="popupTriggerMode">
+          <option value="hotkey">Set hotkey (press a shortcut)</option>
+          <option value="instant">Instant popup (no hotkey)</option>
+          <option value="button">Button trigger (small action button)</option>
+        </select>
+      </label>
+
+      <div id="hotkeyRow" class="control-row">
+        <label>
+          <strong>Current hotkey</strong>
+          <div class="hotkey-display" id="hotkeyDisplay">Not set</div>
+        </label>
+        <button id="openSetHotkey" class="btn-secondary">Set Hotkey</button>
+      </div>
+
+      <div id="buttonTriggerRow" class="control-row hidden">
+        <label>
+          <strong>Button trigger behavior</strong>
+          <div class="muted">A small floating button will appear beside selected text. Click it to open the lookup popup.</div>
+        </label>
+        <label class="checkbox-label small">
+          <input id="showQuickButton" type="checkbox">
+          <span>Show quick action button</span>
+        </label>
+      </div>
+
+      <div id="instantRow" class="control-row hidden">
+        <p class="muted">Popup will show immediately whenever text is selected (no keyboard interaction required).</p>
+      </div>
+    </section>
+      <p class="muted note">Changes are saved automatically.</p>
+  </div>
+
+  <!-- Hotkey Modal (custom animated modal) -->
+  <div id="hotkeyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="hotkeyTitle">
+    <div class="modal-backdrop" id="modalBackdrop"></div>
+    <div class="modal-card" role="document">
+      <h3 id="hotkeyTitle">Set a new hotkey</h3>
+      <p class="muted small">Press the key combination you'd like to use. Use modifiers like Ctrl / Alt / Shift for reliability.</p>
+
+      <div class="capture-box" id="captureBox" tabindex="0" aria-label="Press keys to capture hotkey">
+        <div class="capture-text" id="captureText">Waiting for keys…</div>
+        <div class="key-preview" id="keyPreview"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="saveHotkey" class="btn-primary" disabled>Save</button>
+        <button id="clearHotkey" class="btn-secondary">Clear</button>
+        <button id="cancelHotkey" class="btn-secondary">Cancel</button>
+      </div>
+      <p class="muted very-small">Tip: Avoid single-letter shortcuts that interfere with typing. Recommended: Ctrl+Shift+W or Alt+Shift+W.</p>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

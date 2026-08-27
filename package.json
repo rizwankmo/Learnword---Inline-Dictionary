@@ -1,0 +1,12 @@
+{
+  "name": "learnword",
+  "version": "0.1.1",
+  "scripts": {
+    "build:chrome": "node scripts/build.js chrome",
+    "build:firefox": "node scripts/build.js firefox",
+    "build:edge": "node scripts/build.js edge",
+    "build:opera": "node scripts/build.js opera",
+    "build:all": "npm run build:chrome && npm run build:firefox && npm run build:edge && npm run build:opera"
+  }
+}
+

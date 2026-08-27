@@ -1,0 +1,1 @@
+# Learnword — Inline Dictionary (v0.1.0)

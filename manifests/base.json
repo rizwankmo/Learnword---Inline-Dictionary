@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "Learnword – Multilingual Dictionary",
+  "version": "__VERSION__",
+  "description": "Instant dictionary with 70+ languages. Select text and press Alt+W for definitions in your language. Free translation powered by MyMemory.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png"
+  },
+  "action": {
+    "default_title": "Learnword",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "tabs",
+    "tts",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://api.dictionaryapi.dev/*",
+    "https://www.dictionaryapi.com/*",
+    "https://api.wordnik.com/*",
+    "https://api.mymemory.translated.net/*",
+    "https://translation.googleapis.com/*",
+    "https://media.merriam-webster.com/*",
+    "https://en.wikipedia.org/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "service/background.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/content.css",
+        "icons/*",
+        "pdf-viewer/dist/index.html",
+        "pdf-viewer/dist/assets/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "options_ui": {
+    "page": "settings/options.html",
+    "open_in_tab": true
+  }
+}

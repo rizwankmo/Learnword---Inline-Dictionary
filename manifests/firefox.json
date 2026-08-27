@@ -1,0 +1,53 @@
+{
+  "background": {
+    "scripts": ["service/background.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "learnword@learnword.org",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+    }
+  }
+},
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "description": "A browser extension to help you learn new words while browsing the web.",
+  "host_permissions": [
+    "https://api.dictionaryapi.dev/*",
+    "https://www.dictionaryapi.com/*",
+    "https://api.wordnik.com/*",
+    "https://api.mymemory.translated.net/*",
+    "https://translation.googleapis.com/*",
+    "https://media.merriam-webster.com/*",
+    "https://en.wikipedia.org/*",
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png"
+  },
+  "manifest_version": 3,
+  "name": "Learnword",
+  "options_ui": {
+    "open_in_tab": true,
+    "page": "settings/options.html"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "tabs"
+  ],
+  "version": "1.0.0"  
+}
