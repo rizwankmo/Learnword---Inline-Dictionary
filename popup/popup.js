@@ -11,6 +11,27 @@ function setSafeHTML(element, htmlString) {
 let currentHistory = [];
 let currentWord = null;
 
+// Global error handlers to prevent silent failures and show a helpful message
+window.addEventListener('error', (ev) => {
+  try {
+    console.error('Learnword Popup: Uncaught error', ev.message, ev.error);
+    const body = document.body;
+    if (body) {
+      body.innerHTML = '<div style="padding:16px;color:#900;background:#fff6f6">Learnword popup failed to load. Check console for details.</div>';
+    }
+  } catch (e) { /* ignore */ }
+});
+
+window.addEventListener('unhandledrejection', (ev) => {
+  try {
+    console.error('Learnword Popup: Unhandled promise rejection', ev.reason);
+    const body = document.body;
+    if (body) {
+      body.innerHTML = '<div style="padding:16px;color:#900;background:#fff6f6">Learnword popup encountered an error. Check console for details.</div>';
+    }
+  } catch (e) { /* ignore */ }
+});
+
 // Trigger instruction text updater
 function updateTriggerInstructions(mode) {
   const el = document.getElementById("trigger-instructions");
@@ -299,10 +320,12 @@ document.addEventListener('DOMContentLoaded', checkForPDF);
 
 // Load initial popup trigger mode
 (async () => {
-  const { popupTriggerMode = "instant" } = await ext.storage.local.get("popupTriggerMode");
+  const { popupTriggerMode = "instant", preferredApi = 'freeDictionary' } = await ext.storage.local.get(["popupTriggerMode","preferredApi"]);
   console.log('Learnword Popup: Loaded trigger mode from storage:', popupTriggerMode);
   updateTriggerInstructions(popupTriggerMode);
   console.log('Learnword Popup: Updated trigger instructions for mode:', popupTriggerMode);
+  // Initialize current API label
+  updateCurrentApiLabel(preferredApi);
 })();
 
 // Update instantly when options page changes the setting
@@ -314,7 +337,34 @@ ext.storage.onChanged.addListener((changes, area) => {
     updateTriggerInstructions(newMode);
     console.log('Learnword Popup: Updated trigger instructions after storage change');
   }
+  if (area === 'local' && changes.preferredApi) {
+    updateCurrentApiLabel(changes.preferredApi.newValue);
+  }
 });
+
+function friendlyApiName(key) {
+  const map = {
+    freeDictionary: 'Free Dictionary',
+    merriamWebster: 'Merriam-Webster',
+    wordnik: 'Wordnik',
+    duckDuckGo: 'DuckDuckGo',
+    wiktionary: 'Wiktionary',
+    merged: 'Merged'
+  };
+  return map[key] || key || 'Unknown';
+}
+
+function updateCurrentApiLabel(keyOrName) {
+  try {
+    const el = document.getElementById('currentApi');
+    if (!el) return;
+    if (typeof keyOrName === 'object' && keyOrName.source) {
+      el.textContent = keyOrName.source;
+      return;
+    }
+    el.textContent = friendlyApiName(keyOrName);
+  } catch (e) { console.error('Failed to update currentApi label', e); }
+}
 
 // Periodically check and refresh trigger instructions to ensure they're up to date
 async function refreshTriggerInstructions() {
@@ -388,6 +438,60 @@ document.addEventListener('visibilitychange', () => {
     a.addEventListener('click', () => closeDropdown());
   });
 })();
+
+// Diagnostics panel
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"'`]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;', '`':'&#96;'})[s]);
+}
+
+async function openDiagnostics() {
+  try {
+    const panel = document.getElementById('diagnosticPanel');
+    const content = document.getElementById('diagnosticContent');
+    if (!panel || !content) return;
+    content.textContent = 'Loading...';
+    const obj = await ext.storage.local.get('apiErrors');
+    const list = obj.apiErrors || [];
+    if (!list.length) {
+      content.textContent = 'No recent API errors recorded.';
+    } else {
+      const html = ['<ul style="list-style:none;padding:0;margin:0">'];
+      for (const e of list) {
+        const time = new Date(e.ts).toLocaleString();
+        const endpoint = e.endpoint ? ` <small>(${escapeHtml(e.endpoint)})</small>` : '';
+        html.push(`<li style="margin-bottom:8px;padding:8px;border-bottom:1px solid #e6e6e6;">
+          <div><strong>${escapeHtml(e.api)}</strong>${endpoint} — <small>${time}</small></div>
+          <pre style="white-space:pre-wrap;margin:6px 0;padding:6px;background:#fff;border-radius:4px;border:1px solid #eee">${escapeHtml(e.error)}</pre>
+        </li>`);
+      }
+      html.push('</ul>');
+      content.innerHTML = html.join('');
+    }
+    panel.style.display = 'block';
+    panel.classList.remove('hidden');
+  } catch (err) {
+    console.error('Open diagnostics failed', err);
+  }
+}
+
+function closeDiagnostics() {
+  const panel = document.getElementById('diagnosticPanel');
+  if (!panel) return;
+  panel.style.display = 'none';
+  panel.classList.add('hidden');
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'diagnosticBtn') {
+    e.preventDefault();
+    openDiagnostics();
+  }
+  if (e.target && e.target.id === 'closeDiagnosticBtn') {
+    e.preventDefault();
+    closeDiagnostics();
+  }
+});
 
 // ---------- History Feature ----------
 
@@ -618,7 +722,10 @@ async function showDefinitionView(word) {
     setSafeHTML(document.getElementById('detail-definitions'), `<div class="definition-item">${escapeHtml(item.definition)}</div>`);
   }
   
+  // Update source label and popup's active API name
   document.getElementById('detail-source').textContent = item.source;
+  if (result && result.ok && result.data) updateCurrentApiLabel(result.data.source || item.source);
+  else updateCurrentApiLabel(item.source);
   
   // Setup external buttons
   setupExternalButtons(item.word);

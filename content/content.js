@@ -1,7 +1,6 @@
 const ext = typeof browser !== "undefined" ? browser : chrome;
 const runtime = ext.runtime;
 
-// Add to top of file
 function setSafeHTML(element, htmlString) {
     element.textContent = ''; // Clear current content
     const doc = new DOMParser().parseFromString(htmlString, 'text/html');
@@ -858,7 +857,7 @@ console.log('Learnword: PDF viewer integration ready');
 
   function renderDefinitions(allDefinitions, topDefinition, limit = null) {
   if (!allDefinitions || !allDefinitions.length) {
-    return `<div class="lw-definition">${stripHtml(topDefinition || "No definition available")}</div>`;
+    return `<div class="lw-definition">${stripHtml(topDefinition || "No dictionary entry found for this word.")}</div>`;
   }
   
   const defsToShow = limit ? allDefinitions.slice(0, limit) : allDefinitions;
@@ -1157,12 +1156,11 @@ console.log('Learnword: PDF viewer integration ready');
     // Update word
     STATE.ui.wordEl.textContent = stripHtml(data.word || '');
     
-    // Update pronunciation
-    if (data.phonetic) {
-      STATE.ui.pronEl.textContent = `[${stripHtml(data.phonetic)}]`;
-    } else {
-      STATE.ui.pronEl.textContent = '';
-    }
+    // Update pronunciation + part of speech together, right under the word name
+    const pronParts = [];
+    if (data.phonetic) pronParts.push(`[${stripHtml(data.phonetic)}]`);
+    if (data.partOfSpeech) pronParts.push(stripHtml(data.partOfSpeech));
+    STATE.ui.pronEl.textContent = pronParts.join(' • ');
     
     // Update definitions
     if (data.allDefinitions && data.allDefinitions.length > 0) {
@@ -1171,7 +1169,7 @@ console.log('Learnword: PDF viewer integration ready');
     } else if (data.definition) {
       setSafeHTML(STATE.ui.defWrapper, `<div class="lw-definition">${stripHtml(data.definition)}</div>`);
     } else {
-      setSafeHTML(STATE.ui.defWrapper, `<div class="lw-definition">No definition available</div>`);
+      setSafeHTML(STATE.ui.defWrapper, `<div class="lw-definition">No dictionary entry found for this word.</div>`);
     }
     
     // Handle examples
@@ -1199,12 +1197,8 @@ console.log('Learnword: PDF viewer integration ready');
       STATE.ui.showMoreBtn.classList.add('hidden');
     }
     
-    // Update source/part of speech
-    if (data.partOfSpeech) {
-      STATE.ui.sourceEl.textContent = `(${stripHtml(data.partOfSpeech)})`;
-    } else {
-      STATE.ui.sourceEl.textContent = '';
-    }
+    // Update source label (bottom-left of footer) — shows which dictionary/API actually answered this lookup
+    STATE.ui.sourceEl.textContent = data.source ? stripHtml(data.source) : '';
     
     // Setup external buttons (Google, Wikipedia)
     setupExternalButtons(data.word || '');
@@ -1297,10 +1291,11 @@ console.log('Learnword: PDF viewer integration ready');
       const res = await Promise.race([lookupPromise, timeoutPromise]);
       
       if (!res || !res.ok || !res.data) {
-        // FIX #1: Keep clean layout on error
-        STATE.ui.wordEl.textContent = "";
+        // Keep the popup useful even when a word has no dictionary entry.
+        STATE.ui.wordEl.textContent = currentSelectedTerm || "";
         STATE.ui.pronEl.textContent = "";
-        setSafeHTML(STATE.ui.defWrapper, `<div class="lw-error">${stripHtml(res?.error || "Definition not found")}</div>`);
+        const friendlyMessage = `No dictionary entry found for "${stripHtml(currentSelectedTerm || 'this word')}". Try another word or check the spelling.`;
+        setSafeHTML(STATE.ui.defWrapper, `<div class="lw-error">${stripHtml(friendlyMessage)}</div>`);
 
         setupExternalButtons(currentSelectedTerm);
         
@@ -1441,14 +1436,31 @@ console.log('Learnword: PDF viewer integration ready');
   // Setup hotkey listener initially
   setupHotkeyListener();
 
-  document.addEventListener("click", (e) => {
+  function handleOutsideInteraction(e) {
     if (!STATE.isCardVisible) return;
     if (Date.now() - STATE.justOpenedAt < 200) return;
     const path = e.composedPath ? e.composedPath() : (e.path || [e.target]);
-    if (path.includes(STATE.shadowHost)) return;
+    if (STATE.shadowHost && path.includes(STATE.shadowHost)) return;
     hideCard();
-    try { STATE.ui.quickBtn.setAttribute("hidden", ""); } catch(e) {}
-  }, true);
+    try { STATE.ui.quickBtn.setAttribute("hidden", ""); } catch (e2) {}
+  }
+
+  // Listen on `window` (capture phase fires before `document`) and on
+  // mousedown/pointerdown/touchstart rather than "click". Many sites register
+  // their own document-level click handlers that call stopPropagation() (common
+  // in dropdown/modal libraries), which was silently swallowing our old
+  // document-level "click" listener and leaving the popup stuck open. Firing
+  // earlier, on an earlier event, makes that far less likely.
+  ["mousedown", "pointerdown", "touchstart"].forEach(evtName => {
+    window.addEventListener(evtName, handleOutsideInteraction, true);
+  });
+
+  // Belt-and-braces: never leave the popup stranded open across a tab switch
+  // or page navigation.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) hideCard();
+  });
+  window.addEventListener("pagehide", () => hideCard());
 
   runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {

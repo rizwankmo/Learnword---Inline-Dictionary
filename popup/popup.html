@@ -7,18 +7,18 @@
   <title>Learnword</title>
   <link rel="stylesheet" href="popup.css">
 </head> 
-<!-- Limit Reached Notification (hidden by default) -->
-<div id="tierLimitNotification" class="tier-limit-notification" style="display: none;">
-  <div class="notification-content">
-    <span class="notification-icon">⚠️</span>
-    <div class="notification-text">
-      <p class="notification-title">Daily limit reached</p>
-      <p class="notification-desc">You've used your 12 free lookups today. Come back tomorrow or upgrade to Pro.</p>
-    </div>
-    <a href="https://learnword.lemonsqueezy.com" target="_blank" class="notification-btn">Upgrade Now</a>
-  </div>
-</div>
 <body>
+  <!-- Limit Reached Notification (hidden by default) -->
+  <div id="tierLimitNotification" class="tier-limit-notification" style="display: none;">
+    <div class="notification-content">
+      <span class="notification-icon">⚠️</span>
+      <div class="notification-text">
+        <p class="notification-title">Daily limit reached</p>
+        <p class="notification-desc">You've used your 12 free lookups today. Come back tomorrow or upgrade to Pro.</p>
+      </div>
+      <a href="https://learnword.lemonsqueezy.com" target="_blank" class="notification-btn">Upgrade Now</a>
+    </div>
+  </div>
     <!-- Tab Navigation -->
   <div class="tabs">
     <button class="tab active" data-tab="lookup" id="tab-lookup">
@@ -55,6 +55,9 @@
             <i class="fa fa-cog"></i> Settings
           </button>
         </a>
+      </div>
+      <div class="diagnostic-btn-wrapper">
+        <button id="diagnosticBtn" class="btn-secondary" title="Show diagnostics">Diagnostics</button>
       </div>
       <!-- Premium API Key dropdown -->
       <div class="dropdown" id="apiKeyDropdown" aria-haspopup="true" aria-expanded="false">
@@ -187,6 +190,17 @@
     <div class="dialog-buttons">
       <button id="cancelBtn" class="btn-cancel">Cancel</button>
       <button id="confirmBtn" class="btn-confirm">Clear</button>
+    </div>
+  </div>
+</div>
+
+<!-- Diagnostic Panel -->
+<div id="diagnosticPanel" class="dialog-overlay hidden" style="display: none;">
+  <div class="confirmation-dialog" style="max-width:800px;">
+    <h3>Diagnostics</h3>
+    <div id="diagnosticContent" style="max-height:400px;overflow:auto;font-size:12px;background:#f7f7f7;padding:10px;border-radius:6px;">Loading…</div>
+    <div style="margin-top:10px;text-align:right;">
+      <button id="closeDiagnosticBtn" class="btn-secondary">Close</button>
     </div>
   </div>
 </div>

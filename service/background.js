@@ -175,7 +175,12 @@ const SUPPORTED_LANGUAGES = {
 // ─── Helpers ──────────────────────────────────────────────────
 function isModernTerm(word) {
   const w = word.trim();
-  return [/\b[A-Z]{2,}\b/, /\./, /\b[A-Za-z]+\d+\b/, /\d+[A-Za-z]+\b/, /-/].some(p => p.test(w));
+  // Heuristics for acronyms/abbreviations/alphanumeric terms (e.g. "NASA", "e.g.", "5G", "Web3")
+  // that a traditional dictionary is less likely to carry, so we prioritize Wordnik/MW over it.
+  // NOTE: a bare hyphen check used to be included here, but that misclassified perfectly
+  // ordinary hyphenated English words ("well-being", "co-worker", "twenty-one") as "modern"
+  // terms, which silently ignored the user's chosen preferred dictionary/API order for them.
+  return [/\b[A-Z]{2,}\b/, /\./, /\b[A-Za-z]+\d+\b/, /\d+[A-Za-z]+\b/].some(p => p.test(w));
 }
 
 function cleanWordnikText(str) {
@@ -211,6 +216,41 @@ async function fetchWithRetry(fetchFn, maxRetries = 2) {
   throw lastErr;
 }
 
+// Fetch wrapper that includes response body snippets for failed requests
+async function fetchWithDebug(url, options = {}, apiName = '') {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      let snippet = '';
+      try {
+        const text = await res.text();
+        snippet = text ? text.slice(0, 1000) : '';
+      } catch (e) {
+        snippet = '<unreadable response body>';
+      }
+      throw new Error(`${apiName || 'fetch'} ${res.status}: ${snippet}`);
+    }
+    return res;
+  } catch (err) {
+    throw err;
+  }
+}
+
+// Record API errors to storage for diagnostics (keeps last 100 entries)
+async function recordApiError(apiName, endpoint, term, errorMessage) {
+  try {
+    const key = 'apiErrors';
+    const now = Date.now();
+    const entry = { ts: now, api: apiName, endpoint: endpoint || '', term: term || '', error: String(errorMessage) };
+    const obj = await ext.storage.local.get(key);
+    const list = (obj && obj[key]) || [];
+    list.unshift(entry);
+    if (list.length > 100) list.splice(100);
+    await ext.storage.local.set({ [key]: list });
+    console.debug('[Learnword] Recorded API error for', apiName, endpoint || '', term || '', errorMessage);
+  } catch (e) { /* don't block on logging */ }
+}
+
 function normalizeOutput(obj) {
   return {
     word: obj.word || "",
@@ -233,12 +273,14 @@ function normalizeOutput(obj) {
 async function translateWithMyMemory(text, targetLang, userEmail = '') {
   if (!text || targetLang === 'en') return text;
   try {
-    const langCode = SUPPORTED_LANGUAGES[targetLang]?.code || targetLang;
+    // MyMemory expects short language codes like `es`, `pt`, not regional codes like `es-ES`.
+    const shortTarget = (String(targetLang || '').split('-')[0]) || targetLang;
+    const langCode = shortTarget;
     let url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${langCode}`;
     if (userEmail) url += `&de=${encodeURIComponent(userEmail)}`;
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 4000);
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetchWithDebug(url, { signal: ctrl.signal }, 'MyMemory');
     clearTimeout(tid);
     if (!res.ok) throw new Error(`MyMemory ${res.status}`);
     const data = await res.json();
@@ -252,7 +294,7 @@ async function translateWithGoogle(text, targetLang, apiKey) {
   try {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 4000);
-    const res = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${apiKey}`, {
+    const res = await fetchWithDebug(`https://translation.googleapis.com/language/translate/v2?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ q: text, target: targetLang, format: 'text' }),
@@ -261,7 +303,7 @@ async function translateWithGoogle(text, targetLang, apiKey) {
     clearTimeout(tid);
     if (!res.ok) throw new Error(`Google Translate ${res.status}`);
     const data = await res.json();
-    return data.data.translations[0].translatedText;
+    return data?.data?.translations?.[0]?.translatedText || text;
   } catch (err) { return text; }
 }
 
@@ -303,12 +345,9 @@ const API_ADAPTERS = {
     name: "Free Dictionary API",
     requiresKey: false,
     async fetch(term) {
-      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(term)}`, {
+      const res = await fetchWithDebug(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(term)}`, {
         cache: "no-store", headers: { Accept: 'application/json' }
-      });
-      if (!res.ok) throw new Error(res.status === 404
-        ? `"${term}" not found in Free Dictionary`
-        : `Free Dictionary error (${res.status})`);
+      }, 'FreeDictionary');
       const data = await res.json();
       if (!Array.isArray(data) || !data.length) throw new Error('Invalid response from Free Dictionary');
       return data;
@@ -348,53 +387,78 @@ const API_ADAPTERS = {
     name: "Merriam-Webster",
     requiresKey: true,
     async fetch(term, apiKey) {
-      const res = await fetch(`https://www.dictionaryapi.com/api/v3/references/collegiate/json/${encodeURIComponent(term)}?key=${apiKey}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Merriam-Webster error (${res.status})`);
-      return res.json();
+      const res = await fetchWithDebug(`https://www.dictionaryapi.com/api/v3/references/collegiate/json/${encodeURIComponent(term)}?key=${apiKey}`, { cache: "no-store" }, 'MerriamWebster');
+      const json = await res.json();
+      // Carry the queried term alongside the raw response (same pattern the Wordnik
+      // adapter already uses) so extract() can match it against homograph entries below.
+      return { term, entries: json };
     },
     extract(raw) {
-      if (!Array.isArray(raw) || !raw.length || typeof raw[0] === 'string') return null;
-      const entry = raw[0];
-      const allDefinitions = [];
-      (entry.def || []).forEach(defGroup => {
-        (defGroup.sseq || []).forEach(senseSeq => {
+      const term = raw?.term || "";
+      const entries = raw?.entries;
+      if (!Array.isArray(entries) || !entries.length || typeof entries[0] === 'string') return null;
+
+      // MW returns ONE array entry per homograph — e.g. looking up "bank" returns a
+      // separate entry for the noun and a separate entry for the verb. The previous
+      // version only ever read entries[0], which silently dropped every other part of
+      // speech/sense for the word (the main cause of "thin"/low-quality MW results).
+      // Aggregate across every entry that actually matches the queried headword instead.
+      const normalize = (s) => (s || '').replace(/[*:]/g, '').split(':')[0].toLowerCase();
+      const targetNorm = normalize(term);
+      let matching = entries.filter(e => e && typeof e === 'object' && normalize(e.hwi?.hw || e.meta?.id) === targetNorm);
+      if (!matching.length) matching = entries.filter(e => e && typeof e === 'object');
+      if (!matching.length) return null;
+
+      function walkSseq(sseq, fl, allDefinitions, examples) {
+        (sseq || []).forEach(senseSeq => {
           senseSeq.forEach(([type, data]) => {
             if (type === 'sense') {
-              (data?.dt || []).forEach(([dt, text]) => {
+              (data?.dt || []).forEach(([dt, val]) => {
                 if (dt === 'text') {
-                  const defText = text.replace(/\{[^}]+\}/g, '').trim();
-                  if (defText) allDefinitions.push({ text: defText, partOfSpeech: entry.fl || "" });
+                  const defText = String(val).replace(/\{[^}]+\}/g, '').trim();
+                  if (defText) allDefinitions.push({ text: defText, partOfSpeech: fl || "" });
+                }
+                if (dt === 'vis' && Array.isArray(val)) {
+                  val.forEach(v => { if (v.t) examples.push(v.t.replace(/\{[^}]+\}/g, '').trim()); });
                 }
               });
+            } else if (type === 'pseq' && Array.isArray(data)) {
+              // Phrasal sub-senses (used for run-on phrases) nest another sseq — recurse.
+              walkSseq([data], fl, allDefinitions, examples);
             }
           });
         });
-      });
-      if (!allDefinitions.length && entry.shortdef) {
-        entry.shortdef.forEach(d => allDefinitions.push({ text: d, partOfSpeech: entry.fl || "" }));
       }
-      if (!allDefinitions.length) return null;
+
+      const allDefinitions = [];
       const examples = [];
-      (entry.def || []).forEach(defGroup => {
-        (defGroup.sseq || []).forEach(senseSeq => {
-          senseSeq.forEach(([type, data]) => {
-            if (type === 'sense') {
-              (data?.dt || []).forEach(([dt, vis]) => {
-                if (dt === 'vis') vis.forEach(v => { if (v.t) examples.push(v.t.replace(/\{[^}]+\}/g, '').trim()); });
-              });
-            }
-          });
-        });
+      matching.forEach(entry => {
+        const before = allDefinitions.length;
+        (entry.def || []).forEach(defGroup => walkSseq(defGroup.sseq, entry.fl, allDefinitions, examples));
+        // shortdef largely restates the same senses in brief — only use it as a fallback
+        // for this entry when the structured sseq walk above found nothing, to avoid
+        // showing the same definition twice.
+        if (allDefinitions.length === before && entry.shortdef) {
+          entry.shortdef.forEach(d => allDefinitions.push({ text: d, partOfSpeech: entry.fl || "" }));
+        }
       });
+      if (!allDefinitions.length) return null;
+
+      const primary = matching[0];
+      const prsEntry = matching.find(e => e.hwi?.prs?.[0]?.mw);
+      const audioEntry = matching.find(e => e.hwi?.prs?.[0]?.sound?.audio);
+      const synonyms = new Set();
+      matching.forEach(e => (e.meta?.syns || []).flat().forEach(s => synonyms.add(s)));
+
       return {
-        word: entry.hwi?.hw?.replace(/\*/g, '') || entry.meta?.id?.split(':')[0] || "",
-        phonetic: entry.hwi?.prs?.[0]?.mw || "",
-        partOfSpeech: entry.fl || "",
-        dictAudioFilename: entry.hwi?.prs?.[0]?.sound?.audio || "",
+        word: primary.hwi?.hw?.replace(/\*/g, '') || primary.meta?.id?.split(':')[0] || term,
+        phonetic: prsEntry?.hwi?.prs?.[0]?.mw || "",
+        partOfSpeech: primary.fl || "",
+        dictAudioFilename: audioEntry?.hwi?.prs?.[0]?.sound?.audio || "",
         dictProvider: 'mw', dictAudioUrl: "",
         definition: allDefinitions[0].text,
         allDefinitions,
-        synonyms: (entry.meta?.syns || []).flat(),
+        synonyms: Array.from(synonyms),
         examples,
         source: "Merriam-Webster"
       };
@@ -408,16 +472,16 @@ const API_ADAPTERS = {
       const base = `https://api.wordnik.com/v4/word.json/${encodeURIComponent(term)}`;
       const p = `api_key=${encodeURIComponent(apiKey)}`;
       const [defsR, exR, prR, relR] = await Promise.allSettled([
-        fetch(`${base}/definitions?limit=20&${p}`),
-        fetch(`${base}/examples?limit=8&${p}`),
-        fetch(`${base}/pronunciations?limit=2&${p}`),
-        fetch(`${base}/relatedWords?relationshipTypes=synonym&limitPerRelationshipType=8&${p}`)
+        fetchWithDebug(`${base}/definitions?limit=20&${p}`, {}, 'Wordnik'),
+        fetchWithDebug(`${base}/examples?limit=8&${p}`, {}, 'Wordnik'),
+        fetchWithDebug(`${base}/pronunciations?limit=2&${p}`, {}, 'Wordnik'),
+        fetchWithDebug(`${base}/relatedWords?relationshipTypes=synonym&limitPerRelationshipType=8&${p}`, {}, 'Wordnik')
       ]);
       return {
-        definitions: defsR.status === 'fulfilled' && defsR.value.ok ? await defsR.value.json() : [],
-        examples: exR.status === 'fulfilled' && exR.value.ok ? await exR.value.json() : { examples: [] },
-        pronunciations: prR.status === 'fulfilled' && prR.value.ok ? await prR.value.json() : [],
-        related: relR.status === 'fulfilled' && relR.value.ok ? await relR.value.json() : [],
+        definitions: defsR.status === 'fulfilled' ? await defsR.value.json() : [],
+        examples: exR.status === 'fulfilled' ? await exR.value.json() : { examples: [] },
+        pronunciations: prR.status === 'fulfilled' ? await prR.value.json() : [],
+        related: relR.status === 'fulfilled' ? await relR.value.json() : [],
         term
       };
     },
@@ -445,8 +509,7 @@ const API_ADAPTERS = {
     requiresKey: false,
     async fetch(term) {
       try {
-        const res = await fetch(`https://api.duckduckgo.com/?q=define+${encodeURIComponent(term)}&format=json&no_html=1&skip_disambig=1`, { cache: "no-store" });
-        if (!res.ok) return null;
+        const res = await fetchWithDebug(`https://api.duckduckgo.com/?q=define+${encodeURIComponent(term)}&format=json&no_html=1&skip_disambig=1`, { cache: "no-store" }, 'DuckDuckGo');
         return res.json();
       } catch (e) { return null; }
     },
@@ -470,8 +533,7 @@ const API_ADAPTERS = {
     requiresKey: false,
     async fetch(term) {
       try {
-        const res = await fetch(`https://en.wiktionary.org/api/rest_v1/page/summary/${encodeURIComponent(term)}`, { cache: "no-store" });
-        if (!res.ok) return null;
+        const res = await fetchWithDebug(`https://en.wiktionary.org/api/rest_v1/page/summary/${encodeURIComponent(term)}`, { cache: "no-store" }, 'Wiktionary');
         const summary = await res.json();
         return { summary };
       } catch (e) { return null; }
@@ -623,12 +685,23 @@ async function fetchDefinition(term, options = {}) {
     } catch (err) {
       console.warn(`[Learnword] ✗ ${apiName} failed:`, err.message);
       errorLog.push(`${apiName}: ${err.message}`);
+      // Record error for diagnostics (do not block lookup)
+      try { recordApiError(apiName, '', term, err.message); } catch (e) { /* ignore */ }
     }
   }
 
   if (!extractedList.length) {
-    console.error('[Learnword] All APIs failed:', errorLog);
-    throw new Error(`No definition found for "${term}"`);
+    const fallbackText = `No dictionary entry found for "${term}". Try another word or check the spelling.`;
+    console.warn('[Learnword] All APIs failed:', errorLog);
+    const fallbackData = normalizeOutput({
+      word: term,
+      definition: fallbackText,
+      allDefinitions: [{ text: fallbackText, partOfSpeech: '' }],
+      examples: [],
+      synonyms: [],
+      source: 'fallback'
+    });
+    return fallbackData;
   }
 
   const finalData = extractedList.length === 1 ? extractedList[0].data : mergeResults(extractedList);
@@ -684,6 +757,72 @@ runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === '__ping__') {
     sendResponse(true);
     return false;
+  }
+
+  // Test API connectivity from the options UI
+  if (msg.type === 'testApi') {
+    (async () => {
+      try {
+        const apiName = msg.apiName;
+        const apiKey = msg.apiKey || '';
+        if (!apiName) { sendResponse({ ok: false, error: 'No apiName provided' }); return; }
+
+        const adapter = API_ADAPTERS[apiName];
+        if (!adapter) { sendResponse({ ok: false, error: 'Unknown API' }); return; }
+
+        // Use a common test term
+        const term = 'example';
+        let raw;
+        if (adapter.requiresKey) {
+          if (!apiKey) { sendResponse({ ok: false, error: 'No API key provided' }); return; }
+          raw = await withTimeout(fetchWithRetry(() => adapter.fetch(term, apiKey)));
+        } else {
+          raw = await withTimeout(fetchWithRetry(() => adapter.fetch(term)));
+        }
+        const extracted = adapter.extract(raw);
+        if (extracted && extracted.definition) {
+          sendResponse({ ok: true, okDefinition: true, provider: apiName });
+        } else {
+          sendResponse({ ok: false, error: 'No valid definition returned' });
+        }
+      } catch (err) {
+        sendResponse({ ok: false, error: String(err.message || err) });
+      }
+    })();
+    return true;
+  }
+
+  // Test translation API connectivity
+  if (msg.type === 'testTranslateApi') {
+    (async () => {
+      try {
+        const provider = msg.provider;
+        if (!provider) { sendResponse({ ok: false, error: 'No provider' }); return; }
+
+        const sample = 'Hello world';
+        if (provider === 'mymemory') {
+          const email = msg.email || '';
+          const t = await translateWithMyMemory(sample, 'es', email);
+          if (t && t !== sample) sendResponse({ ok: true, provider: 'mymemory' });
+          else sendResponse({ ok: false, error: 'Translation failed or identical result' });
+          return;
+        }
+
+        if (provider === 'google') {
+          const key = msg.apiKey || '';
+          if (!key) { sendResponse({ ok: false, error: 'No API key provided' }); return; }
+          const t = await translateWithGoogle(sample, 'es', key);
+          if (t && t !== sample) sendResponse({ ok: true, provider: 'google' });
+          else sendResponse({ ok: false, error: 'Translation failed or identical result' });
+          return;
+        }
+
+        sendResponse({ ok: false, error: 'Unknown provider' });
+      } catch (err) {
+        sendResponse({ ok: false, error: String(err.message || err) });
+      }
+    })();
+    return true;
   }
 
   // PDF fetch
