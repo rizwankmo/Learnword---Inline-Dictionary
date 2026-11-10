@@ -42,6 +42,10 @@
             <input id="enableFallback" type="checkbox" checked>
             <span>Enable fallback to other APIs</span>
           </label>
+          <label class="checkbox-label small">
+            <input id="aggregateSources" type="checkbox">
+            <span>Combine results from several APIs (uses more API quota)</span>
+          </label>
         </div>
       </div>
 
@@ -65,7 +69,7 @@
       <p class="muted">Get a free key at <a href="https://dictionaryapi.com/register/index" target="_blank" rel="noreferrer">dictionaryapi.com</a></p>
       <label>
         API Key
-        <input id="merriamWebsterKey" type="text" placeholder="Enter your Merriam-Webster API key">
+        <input id="merriamWebsterKey" type="password" autocomplete="off" data-secret placeholder="Enter your Merriam-Webster API key">
       </label>
       <div class="button-row">
         <button id="saveMerriamKey" class="btn-primary">Save & Test</button>
@@ -79,7 +83,7 @@
       <p class="muted">Get a free key at <a href="https://developer.wordnik.com" target="_blank" rel="noreferrer">developer.wordnik.com</a></p>
       <label>
         API Key
-        <input id="wordnikApiKey" type="text" placeholder="Enter your Wordnik API key">
+        <input id="wordnikApiKey" type="password" autocomplete="off" data-secret placeholder="Enter your Wordnik API key">
       </label>
       <div class="button-row">
         <button id="saveWordnikKey" class="btn-primary">Save & Test</button>
@@ -243,7 +247,7 @@
       
       <label>
         API Key
-        <input id="googleTranslateKey" type="text" placeholder="Enter your Google Cloud Translation API key">
+        <input id="googleTranslateKey" type="password" autocomplete="off" data-secret placeholder="Enter your Google Cloud Translation API key">
       </label>
       <div class="button-row">
         <button id="saveTranslateKey" class="btn-primary">Save & Test</button>

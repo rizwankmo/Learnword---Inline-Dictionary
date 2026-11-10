@@ -23,6 +23,7 @@ function $(id){ return document.getElementById(id); }
 /* --- UI elements --- */
 const preferredApiEl = $('preferredApi');
 const enableFallbackEl = $('enableFallback');
+const aggregateSourcesEl = $('aggregateSources');
 const merriamSection = $('merriamWebsterSection');
 const wordnikSection = $('wordnikSection');
 const merriamKeyEl = $('merriamWebsterKey');
@@ -310,7 +311,7 @@ function showGlobalStatus(message) {
 /* Load saved settings */
 (async function load() {
   const saved = await ext.storage.local.get([
-    'maxLen','preferredApi','enableFallback','merriamWebsterKey','wordnikApiKey',
+    'maxLen','preferredApi','enableFallback','aggregateSources','merriamWebsterKey','wordnikApiKey',
     'popupTriggerMode','hotkey','showQuickButton','targetLanguage','translationProvider',
     'googleTranslateKey','userEmail','developerMode'
   ]);
@@ -319,6 +320,7 @@ function showGlobalStatus(message) {
 
   preferredApiEl.value = s.preferredApi;
   enableFallbackEl.checked = !!s.enableFallback;
+  aggregateSourcesEl.checked = !!s.aggregateSources;
   merriamKeyEl.value = s.merriamWebsterKey || '';
   wordnikKeyEl.value = s.wordnikApiKey || '';
   popupTriggerModeEl.value = s.popupTriggerMode || defaults.popupTriggerMode;
@@ -462,6 +464,28 @@ enableFallbackEl.addEventListener('change', async (e) => {
   await ext.storage.local.set({ enableFallback: e.target.checked });
   await reloadContentScripts();
   showGlobalStatus('Fallback updated');
+});
+
+/* Combine-results toggle */
+aggregateSourcesEl.addEventListener('change', async (e) => {
+  await ext.storage.local.set({ aggregateSources: e.target.checked });
+  showGlobalStatus('Combine results updated');
+});
+
+/* Keys are masked by default; each secret field gets a show/hide toggle */
+document.querySelectorAll('input[data-secret]').forEach(input => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn-secondary reveal-toggle';
+  btn.textContent = 'Show';
+  btn.setAttribute('aria-pressed', 'false');
+  btn.addEventListener('click', () => {
+    const revealed = input.type === 'text';
+    input.type = revealed ? 'password' : 'text';
+    btn.textContent = revealed ? 'Show' : 'Hide';
+    btn.setAttribute('aria-pressed', String(!revealed));
+  });
+  input.insertAdjacentElement('afterend', btn);
 });
 
 /* API Key handlers */
