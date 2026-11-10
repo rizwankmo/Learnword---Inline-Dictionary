@@ -203,13 +203,15 @@ function withTimeout(promise, ms = FETCH_TIMEOUT_MS) {
   });
 }
 
-async function fetchWithRetry(fetchFn, maxRetries = 2) {
+async function fetchWithRetry(fetchFn, maxRetries = 1) {
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try { return await fetchFn(); }
     catch (err) {
       lastErr = err;
       if (err.message.includes('404') || err.message.includes('not found')) throw err;
+      // A timed-out provider is slow, not flaky: retrying only delays the popup.
+      if (err.message.includes('timed out')) throw err;
       if (attempt < maxRetries) await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 500));
     }
   }
@@ -639,11 +641,31 @@ function mergeResults(extractedList) {
 // ─── Prefetch tracking ────────────────────────────────────────
 const PREFETCH_ONGOING = new Set();
 
+const MAX_AGGREGATE_SOURCES = 3;
+
+// Runs one provider adapter. Resolves to its extracted record, or null when it
+// returned no usable definition. Throws on a missing key, timeout or HTTP error.
+async function runAdapter(apiName, term, settings) {
+  const adapter = API_ADAPTERS[apiName];
+  if (!adapter) return null;
+  let raw;
+  if (adapter.requiresKey) {
+    const keyField = apiName === 'merriamWebster' ? 'merriamWebsterKey' : 'wordnikApiKey';
+    const apiKey = settings[keyField];
+    if (!apiKey) throw new Error('no API key');
+    raw = await withTimeout(fetchWithRetry(() => adapter.fetch(term, apiKey)));
+  } else {
+    raw = await withTimeout(fetchWithRetry(() => adapter.fetch(term)));
+  }
+  const extracted = adapter.extract(raw);
+  return extracted?.definition ? extracted : null;
+}
+
 // ─── Main fetchDefinition ──────────────────────────────────────
 async function fetchDefinition(term, options = {}) {
   const settings = await ext.storage.local.get([
     'preferredApi', 'enableFallback', 'merriamWebsterKey', 'wordnikApiKey',
-    'targetLanguage', 'translationProvider', 'googleTranslateKey', 'userEmail'
+    'targetLanguage', 'translationProvider', 'googleTranslateKey', 'userEmail', 'aggregateSources'
   ]);
 
   const targetLang = settings.targetLanguage || 'en';
@@ -651,7 +673,7 @@ async function fetchDefinition(term, options = {}) {
   const googleKey = settings.googleTranslateKey || '';
   const userEmail = settings.userEmail || '';
 
-  const langCacheKey = `def_${term.toLowerCase()}_${targetLang}`;
+  const langCacheKey = `def_${term.toLowerCase()}_${targetLang}${settings.aggregateSources === true ? '_agg' : ''}`;
   const cached = await getCached(langCacheKey);
   if (cached) { await saveToHistory(cached); return cached; }
 
@@ -661,32 +683,42 @@ async function fetchDefinition(term, options = {}) {
   const extractedList = [];
   const errorLog = [];
 
-  for (const apiName of apiOrder) {
-    const adapter = API_ADAPTERS[apiName];
-    if (!adapter) continue;
-    try {
-      let raw;
-      if (adapter.requiresKey) {
-        const keyField = apiName === 'merriamWebster' ? 'merriamWebsterKey' : 'wordnikApiKey';
-        const apiKey = settings[keyField];
-        if (!apiKey) { errorLog.push(`${apiName}: no API key`); continue; }
-        raw = await withTimeout(fetchWithRetry(() => adapter.fetch(term, apiKey)));
+  if (settings.aggregateSources === true) {
+    // Query eligible providers concurrently and keep whatever answers in time.
+    // 'merged' is skipped when other providers exist, because it already queries
+    // DuckDuckGo and Wiktionary.
+    const eligible = apiOrder.filter(name => API_ADAPTERS[name]);
+    const withoutMerged = eligible.filter(name => name !== 'merged');
+    const candidates = (withoutMerged.length ? withoutMerged : eligible).slice(0, MAX_AGGREGATE_SOURCES);
+    const settled = await Promise.allSettled(candidates.map(name => runAdapter(name, term, settings)));
+    settled.forEach((result, i) => {
+      const apiName = candidates[i];
+      if (result.status === 'fulfilled') {
+        console.log(`[Learnword] ✓ ${apiName} succeeded`);
+        extractedList.push({ api: apiName, data: normalizeOutput(result.value) });
       } else {
-        raw = await withTimeout(fetchWithRetry(() => adapter.fetch(term)));
+        console.warn(`[Learnword] ✗ ${apiName} failed:`, result.reason?.message);
+        errorLog.push(`${apiName}: ${result.reason?.message}`);
+        try { recordApiError(apiName, '', term, result.reason?.message || ''); } catch (e) { /* ignore */ }
       }
-      const extracted = adapter.extract(raw);
-      if (extracted?.definition) {
+    });
+  } else {
+    // Preferred provider first; move to the next one only when it fails.
+    for (const apiName of apiOrder) {
+      try {
+        const extracted = await runAdapter(apiName, term, settings);
+        if (!extracted) {
+          errorLog.push(`${apiName}: no valid definition extracted`);
+          continue;
+        }
         console.log(`[Learnword] ✓ ${apiName} succeeded`);
         extractedList.push({ api: apiName, data: normalizeOutput(extracted) });
         if (apiName === settings.preferredApi && !isModernTerm(term)) break;
-      } else {
-        errorLog.push(`${apiName}: no valid definition extracted`);
+      } catch (err) {
+        console.warn(`[Learnword] ✗ ${apiName} failed:`, err.message);
+        errorLog.push(`${apiName}: ${err.message}`);
+        try { recordApiError(apiName, '', term, err.message); } catch (e) { /* ignore */ }
       }
-    } catch (err) {
-      console.warn(`[Learnword] ✗ ${apiName} failed:`, err.message);
-      errorLog.push(`${apiName}: ${err.message}`);
-      // Record error for diagnostics (do not block lookup)
-      try { recordApiError(apiName, '', term, err.message); } catch (e) { /* ignore */ }
     }
   }
 
@@ -888,12 +920,13 @@ runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return false;
     }
 
-    const cacheKey = `def_${String(term).toLowerCase()}_${targetLang}`;
-    const inMem = memGet(cacheKey);
-    if (inMem) { sendResponse({ ok: true, data: inMem, cached: true }); return false; }
-
     (async () => {
       try {
+        // Keyed by mode so toggling aggregation never serves a result built the other way.
+        const { aggregateSources } = await ext.storage.local.get('aggregateSources');
+        const cacheKey = `def_${String(term).toLowerCase()}_${targetLang}${aggregateSources === true ? '_agg' : ''}`;
+        const inMem = memGet(cacheKey);
+        if (inMem) { sendResponse({ ok: true, data: inMem, cached: true }); return; }
         const result = await fetchDefinition(term, { targetLang });
         try { memSet(cacheKey, result); } catch (e) {}
         sendResponse({ ok: true, data: result });

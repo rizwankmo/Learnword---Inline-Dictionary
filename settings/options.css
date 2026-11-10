@@ -192,7 +192,7 @@ h2 { margin: 0 0 6px; font-size: 18px; color: var(--text); }
 label { display: block; margin: 12px 0; color: var(--text); font-weight:600; }
 label strong { display:block; margin-bottom:8px; font-weight:700; color:var(--text); }
 
-select, input[type="text"], input[type="number"] {
+select, input[type="text"], input[type="password"], input[type="number"] {
   width: 100%;
   max-width: 420px;
   padding: 10px 12px;
@@ -570,4 +570,8 @@ a:hover { text-decoration:underline; }
 .tier-options,
 .tier-option-item {
   display: none;
+}
+
+.reveal-toggle {
+  margin-left: 8px;
 }

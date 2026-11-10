@@ -203,8 +203,8 @@ async function showDefinitionFor(word, clientX=null, clientY=null, lang='en') {
     console.warn("Learnword: lookup failed", err);
 
     if (!STATE.ui) {
-      const created = await createShadowUI();
-      if (!created || !STATE.ui) {
+      await createShadowUI();
+      if (!STATE.ui) {
         console.error('Failed to create Shadow UI, cannot display error');
         return;
       }
@@ -364,7 +364,16 @@ console.log('Learnword: PDF viewer integration ready');
     return ['ar', 'he', 'fa', 'ur', 'yi'].includes(lang);
   }
 
-  async function createShadowUI() {
+  // Build the shadow UI at most once. Every caller awaits the same promise,
+  // so a selection or hotkey that arrives mid-build never sees STATE.ui as null.
+  let shadowUIPromise = null;
+  function createShadowUI() {
+    if (STATE.ui) return Promise.resolve();
+    if (!shadowUIPromise) shadowUIPromise = buildShadowUI();
+    return shadowUIPromise;
+  }
+
+  async function buildShadowUI() {
     if (STATE.shadowHost) return;
 
     const host = document.createElement("learnword-root");
@@ -1206,6 +1215,9 @@ console.log('Learnword: PDF viewer integration ready');
 
   async function triggerLookup() {
     try {
+      await settingsLoaded;
+      if (!STATE.ui) await createShadowUI();
+      if (!STATE.ui) return;
       if (!STATE.enabled) return;
       const term = getSelectionString();
       if (!term) return;
@@ -1339,6 +1351,9 @@ console.log('Learnword: PDF viewer integration ready');
   }
 
   document.addEventListener("mouseup", debounce(async () => {
+    await settingsLoaded;
+    if (!STATE.ui) await createShadowUI();
+    if (!STATE.ui) return;
     if (!STATE.enabled) return;
     if (!runtime?.id) return;
     
@@ -1396,7 +1411,7 @@ console.log('Learnword: PDF viewer integration ready');
   // Hotkey event listener - only active when trigger mode is 'hotkey'
   function setupHotkeyListener() {
     // Remove any existing hotkey listener
-    document.removeEventListener("keydown", hotkeyListener);
+    document.removeEventListener("keydown", hotkeyListener, true);
     
     // Only add hotkey listener if trigger mode is 'hotkey'
     if (STATE.popupTriggerMode === "hotkey" && STATE.customHotkey) {
@@ -1462,6 +1477,12 @@ console.log('Learnword: PDF viewer integration ready');
   });
   window.addEventListener("pagehide", () => hideCard());
 
+  // Escape closes the card. The card lives in a shadow root, so the
+  // document-level handler in attachGenericHandlers never reached it.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && STATE.isCardVisible) hideCard();
+  }, true);
+
   runtime.onMessage.addListener((msg, sender, sendResponse) => {
     try {
       // PING — keeps Firefox background alive
@@ -1522,8 +1543,12 @@ console.log('Learnword: PDF viewer integration ready');
     if (STATE.isCardVisible) placeCardNearSelection();
   });
 
+  // Settings must hydrate before the hotkey listener is wired: the listener
+  // reads STATE.customHotkey, which is still empty until loadSettings resolves.
+  const settingsLoaded = loadSettings().then(() => setupHotkeyListener());
+
   (async () => {
-    await loadSettings();
+    await settingsLoaded;
     await createShadowUI();
     initTTS();
     console.log("Learnword content script loaded (with clean loading and fixed external buttons).");
