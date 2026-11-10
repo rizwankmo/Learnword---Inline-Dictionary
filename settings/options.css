@@ -575,3 +575,8 @@ a:hover { text-decoration:underline; }
 .reveal-toggle {
   margin-left: 8px;
 }
+
+/* Hotkey row: align the button with the bottom of the display box.
+   Centring it against the label (which includes the heading) pushed it upwards. */
+#hotkeyRow { align-items: flex-end; }
+#hotkeyRow > label { display: flex; flex-direction: column; gap: 6px; }

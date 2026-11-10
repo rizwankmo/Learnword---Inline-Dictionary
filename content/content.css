@@ -572,3 +572,23 @@
 .hidden {
   display: none !important;
 }
+/* First definition: reserved space and a caret while it types out. */
+.lw-first-def {
+  min-height: 4.8em;
+  padding: 10px 4px;
+  line-height: 1.65;
+}
+.lw-first-def.lw-typing::after {
+  content: "\25AE";
+  margin-left: 2px;
+  opacity: 0.7;
+  animation: lw-caret 0.9s steps(1) infinite;
+}
+@keyframes lw-caret {
+  50% { opacity: 0; }
+}
+/* Keep the phonetic line's height before the lookup returns (Firefox hides empty nodes). */
+.lw-pron:empty {
+  display: block !important;
+  min-height: 1.2em;
+}

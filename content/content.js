@@ -34,6 +34,7 @@ function setSafeHTML(element, htmlString) {
     isCardVisible: false,
     isExpanded: false,
     fullData: null,
+    renderToken: 0,
     targetLanguage: "en"
   };
   // Insert at top of content.js (or merge with existing code)
@@ -173,6 +174,7 @@ async function showDefinitionFor(word, clientX=null, clientY=null, lang='en') {
     lastSelectionCoords = { left: clientX, top: clientY, width: 0, height: 20 };
   }
   currentSelectedTerm = word;
+  STATE.renderToken++;
 
   try {
     if (!STATE.ui) await createShadowUI();
@@ -494,7 +496,7 @@ console.log('Learnword: PDF viewer integration ready');
     STATE.ui.audioBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       const word = STATE.ui.wordEl.textContent;
-      const data = STATE.fullData;
+      const data = STATE.fullData || {};
       const audioBtn = STATE.ui.audioBtn;
       audioBtn.classList.add('speaking');
       playPronunciation(word, {
@@ -1150,67 +1152,119 @@ console.log('Learnword: PDF viewer integration ready');
     });
   }
 
-  // ✅ COMPLETE FIX: showCardWithData function - updates card with full definition data
-  async function showCardWithData(data) {
-    if (!STATE.ui || !data) {
-      console.error('Learnword: showCardWithData called with invalid state or data');
+  // Types text into el a few characters per frame, so the first definition lands
+  // in about a second whatever its length. Stops if the render is superseded.
+  function typeInto(el, text, token, onDone) {
+    const slot = el.parentElement;
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion || !text) {
+      el.textContent = text;
+      onDone();
       return;
     }
-    
-    console.log('Learnword: showCardWithData called with:', data);
-    
-    // Store full data for later use
-    STATE.fullData = data;
-    
-    // Update word
-    STATE.ui.wordEl.textContent = stripHtml(data.word || '');
-    
-    // Update pronunciation + part of speech together, right under the word name
-    const pronParts = [];
-    if (data.phonetic) pronParts.push(`[${stripHtml(data.phonetic)}]`);
-    if (data.partOfSpeech) pronParts.push(stripHtml(data.partOfSpeech));
-    STATE.ui.pronEl.textContent = pronParts.join(' • ');
-    
-    // Update definitions
-    if (data.allDefinitions && data.allDefinitions.length > 0) {
-      const defsHtml = renderDefinitions(data.allDefinitions, data.definition, 2);
-      setSafeHTML(STATE.ui.defWrapper, defsHtml);
-    } else if (data.definition) {
-      setSafeHTML(STATE.ui.defWrapper, `<div class="lw-definition">${stripHtml(data.definition)}</div>`);
-    } else {
-      setSafeHTML(STATE.ui.defWrapper, `<div class="lw-definition">No dictionary entry found for this word.</div>`);
-    }
-    
-    // Handle examples
+    const step = Math.max(1, Math.ceil(text.length / 70));
+    let shown = 0;
+    if (slot) slot.classList.add('lw-typing');
+    const tick = () => {
+      if (token !== STATE.renderToken) return;
+      shown = Math.min(text.length, shown + step);
+      el.textContent = text.slice(0, shown);
+      if (shown < text.length) {
+        setTimeout(tick, 16);
+      } else {
+        if (slot) slot.classList.remove('lw-typing');
+        onDone();
+      }
+    };
+    tick();
+  }
+
+  // Renders the second definition, examples, synonyms and "Show More" state.
+  // Runs once the first definition has finished typing.
+  function renderRestOfCard(data, allDefs, token) {
+    if (token !== STATE.renderToken) return;
+
+    allDefs.slice(1, 2).forEach((def, idx) => {
+      const el = document.createElement('div');
+      el.className = 'lw-definition';
+      const num = document.createElement('strong');
+      num.textContent = `${idx + 2}. `;
+      el.append(num);
+      if (def.partOfSpeech) {
+        const pos = document.createElement('span');
+        pos.className = 'lw-def-pos';
+        pos.textContent = stripHtml(def.partOfSpeech);
+        el.append(pos);
+      }
+      el.append(document.createTextNode(stripHtml(def.text)));
+      STATE.ui.defWrapper.append(el);
+    });
+
     if (data.examples && data.examples.length > 0) {
       STATE.ui.examplesSection.style.display = 'block';
       setSafeHTML(STATE.ui.examplesEl, renderExamples(data.examples, 2));
     } else {
       STATE.ui.examplesSection.style.display = 'none';
     }
-    
-    // Handle synonyms
+
     if (data.synonyms && data.synonyms.length > 0) {
       STATE.ui.thesaurusSection.style.display = 'block';
-      const synsHtml = renderSynonyms(data.synonyms, 5);
-      setSafeHTML(STATE.ui.thesaurusContent, synsHtml);
+      setSafeHTML(STATE.ui.thesaurusContent, renderSynonyms(data.synonyms, 5));
       attachSynonymHandlers();
     } else {
       STATE.ui.thesaurusSection.style.display = 'none';
     }
-    
-    // Show "More" button if there are more definitions
-    if (data.allDefinitions && data.allDefinitions.length > 2) {
-      STATE.ui.showMoreBtn.classList.remove('hidden');
-    } else {
-      STATE.ui.showMoreBtn.classList.add('hidden');
+
+    if (allDefs.length > 2) STATE.ui.showMoreBtn.classList.remove('hidden');
+    else STATE.ui.showMoreBtn.classList.add('hidden');
+  }
+
+  // ✅ showCardWithData: header and footer update at once; the first definition
+  // types out; everything else follows it.
+  async function showCardWithData(data) {
+    if (!STATE.ui || !data) {
+      console.error('Learnword: showCardWithData called with invalid state or data');
+      return;
     }
-    
-    // Update source label (bottom-left of footer) — shows which dictionary/API actually answered this lookup
+
+    console.log('Learnword: showCardWithData called with:', data);
+    const token = ++STATE.renderToken;
+    STATE.fullData = data;
+
+    STATE.ui.wordEl.textContent = stripHtml(data.word || '');
+    const pronParts = [];
+    if (data.phonetic) pronParts.push(`[${stripHtml(data.phonetic)}]`);
+    if (data.partOfSpeech) pronParts.push(stripHtml(data.partOfSpeech));
+    STATE.ui.pronEl.textContent = pronParts.join(' • ');
+
+    let allDefs = data.allDefinitions && data.allDefinitions.length > 0 ? data.allDefinitions : [];
+    if (allDefs.length === 0) {
+      allDefs = [{ text: data.definition || 'No dictionary entry found for this word.', partOfSpeech: '' }];
+    }
+    const first = allDefs[0];
+
+    const slot = document.createElement('div');
+    slot.className = 'lw-definition lw-first-def';
+    if (allDefs.length > 1) {
+      const num = document.createElement('strong');
+      num.textContent = '1. ';
+      slot.append(num);
+    }
+    if (first.partOfSpeech) {
+      const pos = document.createElement('span');
+      pos.className = 'lw-def-pos';
+      pos.textContent = stripHtml(first.partOfSpeech);
+      slot.append(pos);
+    }
+    const textEl = document.createElement('span');
+    slot.append(textEl);
+    STATE.ui.defWrapper.textContent = '';
+    STATE.ui.defWrapper.append(slot);
+
     STATE.ui.sourceEl.textContent = data.source ? stripHtml(data.source) : '';
-    
-    // Setup external buttons (Google, Wikipedia)
     setupExternalButtons(data.word || '');
+
+    typeInto(textEl, stripHtml(first.text), token, () => renderRestOfCard(data, allDefs, token));
   }
 
   async function triggerLookup() {
@@ -1227,6 +1281,9 @@ console.log('Learnword: PDF viewer integration ready');
       // Store current selection
       currentSelectedTerm = term;
       
+      const token = ++STATE.renderToken;
+      STATE.fullData = null;
+
       if (!isSingleWord(term)) {
         // For phrases, show popup with TTS pronunciation
         STATE.fullData = {
@@ -1249,19 +1306,21 @@ console.log('Learnword: PDF viewer integration ready');
         return;
       }
       
-      // FIX #1: Clear everything for clean loading screen
-      STATE.ui.wordEl.textContent = "";
+      // Show the card at once. The word is known now; phonetic, definitions and
+      // examples fill in when the lookup returns.
+      STATE.ui.wordEl.textContent = term;
       STATE.ui.pronEl.textContent = "";
-      STATE.ui.defWrapper.innerHTML = `<div class="lw-loading">Looking up...</div>`;
+      setSafeHTML(STATE.ui.defWrapper, `<div class="lw-definition lw-first-def"></div>`);
       STATE.ui.examplesSection.style.display = 'none';
       STATE.ui.thesaurusSection.style.display = 'none';
       STATE.ui.showMoreBtn.classList.add("hidden");
       STATE.ui.sourceEl.textContent = "";
-      
+      setupExternalButtons(term);
+
       showCard();
       placeCardNearSelection();
-      
-      // ✅ FIXED: Call background service using message with timeout
+
+            // ✅ FIXED: Call background service using message with timeout
       const lookupPromise = new Promise((resolve, reject) => {
         try {
           if (!runtime) {
@@ -1301,6 +1360,7 @@ console.log('Learnword: PDF viewer integration ready');
       );
       
       const res = await Promise.race([lookupPromise, timeoutPromise]);
+      if (token !== STATE.renderToken) return;
       
       if (!res || !res.ok || !res.data) {
         // Keep the popup useful even when a word has no dictionary entry.
@@ -1333,6 +1393,7 @@ console.log('Learnword: PDF viewer integration ready');
   }
 
   function hideCard() {
+    STATE.renderToken++;
     if (!STATE.ui) return;
     STATE.isCardVisible = false;
     STATE.isExpanded = false;
